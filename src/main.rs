@@ -6,10 +6,13 @@ use std::time::{Duration, Instant};
 use chrono::{Days, Utc};
 use futures::future::join_all;
 use rand::{distributions::Alphanumeric, Rng};
-use rdkafka::config::ClientConfig;
-use rdkafka::message::{Header, OwnedHeaders};
-use rdkafka::producer::{FutureProducer, FutureRecord};
-use rdkafka::util::get_rdkafka_version;
+use rdkafka::{
+    config::ClientConfig,
+    message::{Header, OwnedHeaders},
+    producer::{FutureProducer, FutureRecord},
+    util::get_rdkafka_version,
+    admin::{AdminClient, AdminOptions},
+};
 use serde::Serialize;
 // use serde_json::{json, Value};
 use tokio::time;
@@ -127,7 +130,29 @@ async fn produce(data: Vec<String>, producer: &FutureProducer) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let producer: &FutureProducer = &ClientConfig::new()
+    let admin_client: &AdminClient<_> = &ClientConfig::new()
+        .set("bootstrap.servers", "localhost:9092")
+        .set("message.timeout.ms", "5000")
+        .create()
+        .expect("Producer creation error");
+
+		let deletion_topics: [&str; 1] = ["iceberg-topics"];
+
+    match admin_client
+        .delete_topics(&deletion_topics, &AdminOptions::new())
+        .await
+    {
+        Ok(results) => {
+            println!("results: {:?}", results);
+        }
+        Err(err) => {
+            println!("err: {:?}", err);
+        }
+    };
+
+		return Ok(());
+
+    let producer: &FutureProducer<_> = &ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
         .set("message.timeout.ms", "5000")
         .create()
@@ -240,11 +265,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 // // let num_partitions = 3;
 // // let replication_factor = 1;
 //
-// // let new_topic = NewTopic::new(
-// //     topic_name,
-// //     num_partitions,
-// //     TopicReplication::Fixed(replication_factor),
-// // );
 //
 // // match consumer.create_topics(vec![&new_topic], &AdminOptions::new()).await {
 // //     Ok(results) => {println!("results: {:?}", results);}
