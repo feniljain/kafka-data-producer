@@ -7,11 +7,12 @@ use chrono::{Days, Utc};
 use futures::future::join_all;
 use rand::{distributions::Alphanumeric, Rng};
 use rdkafka::{
+    admin::{AdminClient, AdminOptions},
     config::ClientConfig,
+    consumer::{BaseConsumer, Consumer},
     message::{Header, OwnedHeaders},
     producer::{FutureProducer, FutureRecord},
     util::get_rdkafka_version,
-    admin::{AdminClient, AdminOptions},
 };
 use serde::Serialize;
 // use serde_json::{json, Value};
@@ -130,27 +131,24 @@ async fn produce(data: Vec<String>, producer: &FutureProducer) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let admin_client: &AdminClient<_> = &ClientConfig::new()
+    let consumer: &BaseConsumer<_> = &ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
         .set("message.timeout.ms", "5000")
         .create()
         .expect("Producer creation error");
 
-		let deletion_topics: [&str; 1] = ["iceberg-topics"];
-
-    match admin_client
-        .delete_topics(&deletion_topics, &AdminOptions::new())
-        .await
-    {
-        Ok(results) => {
-            println!("results: {:?}", results);
+    match consumer.fetch_metadata(None, std::time::Duration::from_secs(5)) {
+        Ok(metadata) => {
+            for topic in metadata.topics() {
+                println!("topic name: {:?}", topic.name());
+            }
         }
         Err(err) => {
-            println!("err: {:?}", err);
+            println!("fuck this shit! {:?}", err);
         }
     };
 
-		return Ok(());
+    return Ok(());
 
     let producer: &FutureProducer<_> = &ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
@@ -204,85 +202,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// check latency:
-// - timestamp: would have to find highest timestamp and what is producer currently writing
-// - number: would have to find higher number written nd what is producer currently writing
-//  - spark sql
-//  - e6data engine
-
-// {"meta":{"producer":{"timestamp":"2021-03-24T15:06:17.321710+00:00"}},"method":"DELETE","session_id":"7c28bcf9-be26-4d0b-931a-3374ab4bb458","status":204,"url":"http://www.youku.com","uuid":"831c6afa-375c-4988-b248-096f9ed101f8"}
-// let producer: &FutureProducer = &ClientConfig::new()
-// .set("bootstrap.servers", "asdfasdf asdf asdf asdf asdf")
-// .set("security.protocol", "SASL_SSL")
-// .set("sasl.mechanism", "SCRAM-SHA-512")
-// .set("sasl.username", "alice")
-// .set("sasl.password", "alice-secret")
-// .set("message.timeout.ms", "5000")
-// .create()
-// .expect("Producer creation error");
-
-// let producer: &FutureProducer = &ClientConfig::new()
-//     .set("bootstrap.servers", "alsdjafsdkf")
-//     .set("security.protocol", "SASL_SSL")
-//     .set("sasl.mechanism", "SCRAM-SHA-512")
-//     .set("sasl.username", "admin")
-//     .set("sasl.password", "admin")
-//     .set("message.timeout.ms", "5000")
-//     .create()
-//     .expect("Producer creation error");
-//
-//use serde::{Deserialize, Serialize};
-
-//#[derive(Debug, Serialize, Deserialize)]
-//struct DataProducer {
-//    timestamp: String,
-//}
-//
-//#[derive(Debug, Serialize, Deserialize)]
-//struct DataMeta {
-//    producer: DataProducer,
-//}
-//
-//#[derive(Debug, Serialize, Deserialize)]
-//struct Data {
-//    meta: DataMeta,
-//}
-// // let data_1 = vec![String::from("2024-11-20T15:00:06.869891203Z stdout F 20-11-2024 15:00:06,869 DEBUG pool-7-thread-1 QueryId= HeartbeatTask:25 - Sending heartbeat from engine: 10.201.109.0 to cluster manager at: debug-test-2-queue")];
-// let data_1 = vec![String::from("2024-11-20T15:04:55.546150892Z stdout F 20-11-2024 15:04:55,546 DEBUG qtp571514712-227 QueryId= ExecutorHttpService:34 - Received request on engine http server: Path: /, Method: GET")];
-// // let data_n = data_1.repeat(100);
-
-// produce(data_1).await;
-//
-//
-// // let producer: &FutureProducer = &ClientConfig::new()
-// //     .set("bootstrap.servers", "localhost:9092")
-// //     .set("message.timeout.ms", "5000")
-// //     .create()
-// //     .expect("Producer creation error");
-//
-//
-// // let topic_name = "iceberg-topics";
-// // let num_partitions = 3;
-// // let replication_factor = 1;
-//
-//
-// // match consumer.create_topics(vec![&new_topic], &AdminOptions::new()).await {
-// //     Ok(results) => {println!("results: {:?}", results);}
-// //     Err(err) => {println!("err: {:?}", err);}
-// // };
-//
-// let (version_n, version_s) = get_rdkafka_version();
-// println!("rd_kafka_version: 0x{:08x}, {}", version_n, version_s);
-//
-// // match consumer.fetch_metadata(None, std::time::Duration::from_secs(5)) {
-// //     Ok(metadata) => {
-// //         for topic in metadata.topics() {
-// //             println!("topic name: {:?}", topic.name());
-// //         }
-// //     },
-// //     Err(err) => {
-// //         println!("fuck this shit! {:?}", err);
-// //     },
-// // };
-//
-// // Ok(())
+// let admin_client: &AdminClient<_> = &ClientConfig::new()
+// 		.set("bootstrap.servers", "asdfasdf")
+// 		.set("security.protocol", "SASL_SSL")
+// 		.set("sasl.mechanism", "SCRAM-SHA-512")
+// 		.set("sasl.username", "asdfs")
+// 		.set("sasl.password", "asdfs")
+// 		.set("message.timeout.ms", "5000")
+// 		.create()
+// 		.expect("Producer creation error");
+// =====
+// let deletion_topics: [&str; 1] = ["iceberg-topics"];
+// match admin_client
+//     .delete_topics(&deletion_topics, &AdminOptions::new())
+//     .await
+// {
+//     Ok(results) => {
+//         println!("results: {:?}", results);
+//     }
+//     Err(err) => {
+//         println!("err: {:?}", err);
+//     }
+// };
+// =====
+// let topic_name = "iceberg-topics";
+// let num_partitions = 3;
+// let replication_factor = 1;
+// match consumer.create_topics(vec![&new_topic], &AdminOptions::new()).await {
+//     Ok(results) => {println!("results: {:?}", results);}
+//     Err(err) => {println!("err: {:?}", err);}
+// };
+// =====
+// match consumer.fetch_metadata(None, std::time::Duration::from_secs(5)) {
+//     Ok(metadata) => {
+//         for topic in metadata.topics() {
+//             println!("topic name: {:?}", topic.name());
+//         }
+//     },
+//     Err(err) => {
+//         println!("fuck this shit! {:?}", err);
+//     },
+// };
