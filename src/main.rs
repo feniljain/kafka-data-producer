@@ -7,8 +7,11 @@ use chrono::{Days, Utc};
 use futures::future::join_all;
 use rand::{distributions::Alphanumeric, Rng};
 use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::message::{Header, OwnedHeaders};
-use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::producer::{
+    BaseRecord, DefaultProducerContext, FutureProducer, FutureRecord, ThreadedProducer,
+};
 use rdkafka::util::get_rdkafka_version;
 use serde::Serialize;
 // use serde_json::{json, Value};
@@ -100,7 +103,23 @@ impl LogMessage {
     }
 }
 
-async fn produce(data: Vec<String>, producer: &FutureProducer) {
+async fn threaded_producer(data: Vec<String>, producer: &ThreadedProducer<DefaultProducerContext>) {
+    data.iter().enumerate().for_each(|(i, ele)| {
+        producer
+            .send(
+                BaseRecord::to("iceberg-topics")
+                    .payload(ele)
+                    .key(&format!("Key {}", i))
+                    .headers(OwnedHeaders::new().insert(Header {
+                        key: "header_key",
+                        value: Some("header_value"),
+                    })),
+            )
+            .expect("");
+    });
+}
+
+async fn future_produce(data: Vec<String>, producer: &FutureProducer) {
     let futures = data
         .iter()
         .enumerate()
@@ -127,7 +146,8 @@ async fn produce(data: Vec<String>, producer: &FutureProducer) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let producer: &FutureProducer = &ClientConfig::new()
+    // let producer: &FutureProducer<_> = &ClientConfig::new()
+    let producer: &ThreadedProducer<_> = &ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
         .set("message.timeout.ms", "5000")
         .create()
@@ -146,7 +166,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let data = std::iter::from_fn(move || {
         iter_cnt += 1;
 
-        if iter_cnt < 1000 {
+        if iter_cnt < 10000 {
             let log_msg = LogMessage::new();
             Some(serde_json::to_string(&log_msg).expect("could not serialize to json"))
         } else {
@@ -158,7 +178,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut cnt = 0;
     let mut interval = time::interval(Duration::from_secs(1));
 
-    // for _ in 1..2 {
+    tokio::spawn(async {
+        let consumer: &BaseConsumer<_> = &ClientConfig::new()
+            .set("bootstrap.servers", "localhost:9092")
+            .set("message.timeout.ms", "5000")
+            .create()
+            .expect("Producer creation error");
+
+        let mut interval = time::interval(Duration::from_secs(1));
+
+        loop {
+            interval.tick().await;
+
+            match consumer.fetch_metadata(None, std::time::Duration::from_secs(5)) {
+                Ok(metadata) => {
+                    for topic in metadata.topics() {
+                        if topic.name() == "iceberg-topics" {
+                            if let Ok((low, high)) = consumer.fetch_watermarks(
+                                topic.name(),
+                                topic.partitions()[0].id(),
+                                Duration::from_secs(1),
+                            ) {
+                                println!("earliest: {:?} and latest: {:?}", low, high);
+                            }
+                            // .expect("could not fetch watermark");
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!("fuck this shit! {:?}", err);
+                }
+            };
+        }
+    });
+
+    // for _ in 1..2
     loop {
         interval.tick().await;
 
@@ -166,7 +220,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         cnt += data.len();
 
-        produce(data.clone(), producer).await;
+        // future_produce(data.clone(), producer).await;
+        threaded_producer(data.clone(), producer).await;
 
         let elapsed_time = instant.elapsed();
 
