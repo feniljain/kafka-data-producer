@@ -7,11 +7,11 @@ use chrono::{Days, Utc};
 use futures::future::join_all;
 use rand::{distributions::Alphanumeric, Rng};
 use rdkafka::{
+    admin::{AdminClient, AdminOptions},
     config::ClientConfig,
     message::{Header, OwnedHeaders},
     producer::{FutureProducer, FutureRecord},
     util::get_rdkafka_version,
-    admin::{AdminClient, AdminOptions},
 };
 use serde::Serialize;
 // use serde_json::{json, Value};
@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .create()
         .expect("Producer creation error");
 
-		let deletion_topics: [&str; 1] = ["iceberg-topics"];
+    let deletion_topics: [&str; 1] = ["iceberg-topics"];
 
     match admin_client
         .delete_topics(&deletion_topics, &AdminOptions::new())
@@ -150,7 +150,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-		return Ok(());
+    return Ok(());
 
     let producer: &FutureProducer<_> = &ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
