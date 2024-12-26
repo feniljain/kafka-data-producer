@@ -143,7 +143,15 @@ async fn future_produce(data: Vec<String>, producer: &FutureProducer) {
     join_all(futures).await;
 }
 
-const MAX_COUNT: i32 = 10000;
+const MAX_COUNT: i32 = 1000;
+
+// messages -> local buffer -> kafka
+// ACK: poll
+
+// three types of producer
+// - base producer: user defined message sending  + ACK handling
+// - threaded producer: 1 thread for sending message + 1 thread for ACK + offset every 5 seconds
+// - future producer: 1 Future per message: send message + ACK both: Slow
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -172,7 +180,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut cnt = 0;
     let mut interval = time::interval(Duration::from_secs(1));
 
-    tokio::spawn(async {
+    tokio::spawn(async move {
         let consumer: &BaseConsumer<_> = &ClientConfig::new()
             .set("bootstrap.servers", "localhost:9092")
             .set("message.timeout.ms", "5000")
